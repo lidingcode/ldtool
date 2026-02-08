@@ -1,0 +1,686 @@
+---
+title: "中国社会状况综合调查2021年部分变量频数描述"
+author: "李丁"
+date: "2026-01-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 前言
+
+　"中国社会状况综合调查"（Chinese Social Survey，简称CSS）是中国社会科学院社会学研究所于2005年发起的一项全国范围内的大型连续性抽样调查项目，目的是通过对全国公众的劳动就业、家庭及社会生活、社会态度等方面的长期纵贯调查，来获取转型时期中国社会变迁的数据资料，从而为社会科学研究和政府决策提供翔实而科学的基础信息。关于CSS2021请参看官网的有关信息 <http://css.cssn.cn/css_sy/>。该调查由中国社会科学院社会学研究所执行，项目主持人为陈光金、李炜。
+　
+
+　本命令旨在利用R快速处理Stata格式原数据，并得到基本的统计表格，方便大家对中国的基本情况有初步了解，CSS2021年调查共采集了10136个记录。下面的分析没有进行加权。作者感谢上述机构及其人员提供数据协助，本报告内容由作者自行负责。
+
+　
+　在命令中我借助ChatGPT创建了四个简单的频次分析命令，方便我们快速进行单选题、多选题频次分析和双变量交叉分析，输出的表格如Stata输出一样简洁高效。  
+
+
+### 读入数据
+```{r read data,echo=FALSE}
+library(haven)
+library(tidyverse)
+library(ldtool)
+library(sjlabelled)
+library(magrittr)
+library(janitor)
+library(gt)
+```
+### 查看读入的结果
+```{r}
+setwd("/Users/liding/DATA/CSS/CSS2006-2023/CSS2021")
+# 读入数据进行初步处理
+css21 <- read_dta("CSS2021.dta")
+
+# R初始的命令出来的结果并不好看
+des(css21)
+```
+
+```{r}
+css21 %>% tabyl(v4)
+css21 %>% count(v4)
+```
+
+
+### 清理CSS2021数据
+由于变量标签和取值标签存在一些乱码，提前进行了一些处理。
+
+```{r clean}
+#保留标签
+# Stata格式的数据存在一些标签问题
+#因为标签太长被删截出现了乱码
+# 查看哪些变量的标签有问题
+library(labelled)
+bad_labels <- sapply(var_label(css21), function(x) {
+  tryCatch({
+    nchar(x)
+    FALSE
+  }, error = function(e) TRUE)
+})
+
+names(bad_labels[bad_labels])
+
+has_bad_value_labels <- function(x) {
+  labs <- attr(x, "labels")
+  if (is.null(labs)) return(FALSE)
+
+  tryCatch({
+    nchar(names(labs))
+    FALSE
+  }, error = function(e) TRUE)
+}
+
+bad_vars <- names(css21)[sapply(css21, has_bad_value_labels)]
+bad_vars
+
+# 定义两个函数
+# 删除变量标签中的乱码部分
+clean_variable_labels <- function(df) {
+  labs <- var_label(df)
+
+  labs_clean <- lapply(labs, function(x) {
+    if (is.null(x) || is.na(x)) return(x)
+    iconv(x, from = "", to = "UTF-8", sub = "") |> trimws()
+  })
+
+  var_label(df) <- labs_clean
+  df
+}
+
+# 删除取值标签中乱码部分
+clean_value_labels <- function(df) {
+  df[] <- lapply(df, function(x) {
+    labs <- attr(x, "labels")
+    if (is.null(labs)) return(x)
+
+    names(labs) <- iconv(
+      names(labs),
+      from = "",
+      to = "UTF-8",
+      sub = ""
+    ) |> trimws()
+
+    attr(x, "labels") <- labs
+    x
+  })
+  df
+}
+
+#删除数据中的各种自定义缺失值标签
+css21 <- css21  %>% 
+  clean_variable_labels() %>% 
+  clean_value_labels()
+
+labelcss <- get_label(css21)
+
+css21 <- css21 %>% 
+#  mutate_all(~ replace(., .==-1|.==-2|.==-8|.==98|.==99|.==9999997|.==9999998|.==9999999, NA)) %>% 
+  #删除没有使用的取值标签（包括特殊定义值的标签）
+  drop_labels()  %>%  
+  #将仍然带有标签的变量转换为因子变量
+  sjlabelled::as_label(drop.levels = TRUE) %>% 
+  #将无取值标签变量转换为数字变量，取消is.labelled 属性
+  mutate_if(is.labelled, ~ as_numeric(as.character(.))) %>%
+  set_label(labelcss)  # 重新贴标签
+
+```
+
+
+```{r}
+# 做了基本的标签处理后，数据的可理解性可以提高。
+css21%>% tabyl(v4)
+css21%>% count(v4)
+```
+```{r,eval=FALSE,echo=FALSE}
+# 一种写法作为备选
+get_var_label <- function(df, var) {
+  lab <- attr(df[[var]], "label")
+  if (is.null(lab) || is.na(lab) || lab == "") {
+    return("")
+  }
+  as.character(lab)
+}
+
+tab1 <- function(df, var) {
+  var <- enquo(var)
+  var_name <- as_name(var)
+  var_label <- get_var_label(df, var_name)
+  header_title <- title %||%
+    paste0(var_name,
+           if (var_label != "") paste0("：", var_label) else "")
+
+  x <- df[[var_name]]
+  
+  # 去除缺失
+  x_nm <- x[!is.na(x)]
+  N <- length(x_nm)
+  if (N==0) {
+    print("变量不存在或没有有效观察值")
+    return("")
+    }
+
+  # 频数
+  tab <- as.data.frame(table(x_nm))
+  colnames(tab) <- c("value", "freq")
+
+  # 百分比
+  tab <- tab |>
+    mutate(
+      percent = freq / N * 100
+    )
+
+  # 累计百分比（按取值顺序）
+  tab <- tab |>
+    mutate(
+      cum_percent = cumsum(percent)
+    )
+
+  # 如果有取值标签，替换显示
+  if (!is.null(attr(x, "labels"))) {
+    labs <- attr(x, "labels")
+    tab$value <- ifelse(
+      tab$value %in% labs,
+      names(labs)[match(tab$value, labs)],
+      as.character(tab$value)
+    )
+  }
+
+  tab |>
+    mutate(
+      percent = round(percent, 1),
+      cum_percent = round(cum_percent, 1)
+    ) %>% 
+  gt() %>%
+#添加标题操作不成功
+    #   tab_header(
+#      title = header_title,
+#      subtitle = paste0("N = ", N)
+#    ) %>%
+    fmt_number(
+      columns = c(percent,cum_percent),
+      decimals = 1
+    ) %>%
+    cols_label(
+      value="Value",
+      freq = "Freq.",
+      percent = "Percent",
+      cum_percent = "Cum."
+    )
+}
+
+tab1(css21,v4) 
+```
+
+### 定义一个单变量频数分析函数
+```{r tab1}
+# tab1函数
+library(dplyr)
+library(gt)
+library(rlang)
+
+get_var_label <- function(data, var) {
+  lab <- attr(data[[var]], "label")
+  if (is.null(lab) || is.na(lab) || lab == "") {
+    return("")
+  }
+  as.character(lab)
+}
+
+tab1 <- function(data, var, title = NULL) {
+  var <- enquo(var)
+  var_name <- as_name(var)
+  var_label <- get_var_label(data, var_name)
+
+  df <- data %>%
+    dplyr::filter(!is.na(!!var)) %>%
+    count(!!var, name = "Frequency") %>%
+    mutate(
+      Percent = Frequency / sum(Frequency) * 100,
+      CumPercent = cumsum(Percent),
+    )
+  
+  N <- sum(df$Frequency)
+
+  header_title <- title %||%
+    paste0(var_name,
+           if (var_label != "") paste0("：", var_label) else "")
+  df %>%
+    gt() %>%
+    tab_header(
+      title = header_title,
+      subtitle = paste0("N = ", N)
+    ) %>%
+    fmt_number(
+      columns = c(Percent, CumPercent),
+      decimals = 1
+    ) %>%
+    cols_label(
+      !!colnames(df)[1] := "Value",
+      Frequency = "Freq.",
+      Percent = "Percent",
+      CumPercent = "Cum."
+    )
+}
+
+tab1(css21, v4)
+```
+
+### 定义一个批量做单变量频次分析的函数
+```{r tab_1}
+# tab_1 函数
+library(dplyr)
+library(gt)
+library(rlang)
+library(htmltools)  # 用于组合多个 HTML 元素
+
+tab_1 <- function(data,..., title_prefix = NULL) {
+  # vars 可以是列名向量或者 tidyselect 语法
+  vars <- tidyselect::eval_select(expr(c(...)), data)
+  var_names <- names(vars)
+  
+ # vars_selected <- tidyselect::eval_select(enquo(vars), data)
+ #  var_names <- names(vars_selected)
+
+  # 循环生成每个 gt 表
+  gt_list <- lapply(var_names, function(v) {
+    title <- if (!is.null(title_prefix)) paste0(title_prefix, v) else NULL
+    tab1(data, !!sym(v), title = title)
+  })
+
+  # 直接组合成 HTML 可渲染对象
+  tagList(gt_list)
+}
+
+```
+
+```{r}
+tab_1(css21, h1a_1:h1a_8,h1a_9)
+tab_1(css21, h2a_1:h2a_12)
+
+```
+
+### 定义一个多选题频次分析函数
+
+```{r mrtab}
+#mrtab 函数
+library(dplyr)
+library(gt)
+library(rlang)
+library(haven)
+library(htmltools)
+
+mrtab <- function(df, ..., select_value = 1, title_prefix = "多选题分析") {
+  # 使用 tidyselect 语法选择变量
+  vars <- tidyselect::eval_select(expr(c(...)), df)
+  var_names <- names(vars)
+  # 提取数据块
+  block <- df[var_names]
+  # 有效样本：至少一列非缺失
+  #valid <- apply(block, 1, function(x) any(!is.na(x)))
+  valid <- apply(block, 1, function(x) {
+  sum(x == select_value, na.rm = TRUE) > 0
+})
+  base_n <- sum(valid)
+  # 获取标签
+  labels <- sapply(block, var_label)
+  # 计算频数（修正：确保取向量，labelled 转数值）
+  freq <- sapply(var_names, function(v) {
+    vec <- df[[v]][valid]
+    if (inherits(vec, "labelled")) vec <- as_numeric(vec)
+    sum(vec == select_value, na.rm = TRUE)
+  })
+  
+  # 百分比（占有效样本）
+  pct_case <- freq / base_n * 100
+  
+  # 响应百分比（占总回应次数 = 所有选中次数之和）
+  total_responses <- sum(freq)
+  pct_resp <- freq / total_responses * 100
+  
+  # 构建表格数据框
+  df_tab <- tibble(
+    Value = labels,
+    Freq. = freq,
+    Pct_resp = round(pct_resp, 1),
+    Pct_case = round(pct_case, 1)
+  )
+  
+  # 标题自动显示变量名范围 + 可选前缀
+  header_title <- paste0(
+    if (!is.null(title_prefix)) paste0(title_prefix, " ") else "",
+    var_names[1], " - ", var_names[length(var_names)]
+  )
+  
+  # 输出 gt 表
+  df_tab %>%
+    gt() %>%
+    tab_header(
+      title = header_title,
+      subtitle = paste0("N = ", base_n,"  Rs = ", total_responses)
+    ) %>%
+    fmt_number(
+      columns = c("Pct_resp","Pct_case"),
+      decimals = 1
+    )
+}
+
+```
+
+```{r}
+
+mrtab(css21, h1a_1:h1a_8,h1a_9,
+      select_value="是",title_prefix="加入了何种社群或组织")
+```
+
+### 定义一个列联表函数
+```{r}
+# 定义一个交互分析函数
+library(dplyr)
+library(tidyr)
+library(janitor)
+library(htmlTable) # 用于在 Viewer 窗口渲染美化表格
+
+tabr <- function(data, row_var, col_var, type = "row") {
+  row_v <- enquo(row_var)
+  col_v <- enquo(col_var)
+  
+  # 1. 基础频数提取
+  t_raw <- data %>% tabyl(!!row_v, !!col_v,show_na = FALSE, show_missing_levels = FALSE)
+  row_labels <- as.character(t_raw[[1]])
+  mat <- as.matrix(t_raw[,-1])
+  # --- 核心：进行卡方检验 (Chi-square test) ---
+  chi_test <- chisq.test(mat)
+  chi_stats <- sprintf("Pearson chi2(%d) = %.4f   Pr = %.3f", 
+                       chi_test$parameter, chi_test$statistic, chi_test$p.value)
+  if (type == "row") {
+    # --- 行百分比逻辑 ---
+    row_ns <- rowSums(mat)
+    total_n <- sum(mat)
+    pct_mat <-mat / row_ns * 100
+    total_row_pct <-colSums(mat) / total_n * 100
+    full_pct_mat <- rbind(pct_mat, total_row_pct)
+    row_totals <- rowSums(full_pct_mat)
+    res_mat <- cbind(full_pct_mat,Total=row_totals)
+    res_mat <- round(res_mat,1)
+    res_mat <- format(res_mat, nsmall = 1)
+    res_mat <- cbind(res_mat, `N` = as.character(c(row_ns, total_n)))
+    
+    res <- data.frame(Label = c(row_labels, "Total"), res_mat, 
+                      check.names = FALSE, stringsAsFactors = FALSE)
+  } else {
+    # --- 列百分比逻辑 ---
+    col_ns <- colSums(mat)
+    total_n <- sum(mat)
+    pct_mat <- sweep(mat, 2, col_ns, "/") * 100
+    total_col_pct <- rowSums(mat) / total_n * 100
+    full_pct_mat <- cbind(pct_mat, Total = total_col_pct)
+    col_totals <- colSums(full_pct_mat)
+    
+    res_mat <- round(full_pct_mat,1)
+    res_mat <- format(res_mat, nsmall = 1)
+    final_mat <- rbind(res_mat, 
+                       Total_Pct = format(col_totals, nsmall = 1),
+                       `Sample Size (N)` = as.character(c(col_ns, total_n)))
+    
+    res <- data.frame(Label = c(row_labels, "Total_Pct", "N"), 
+                      final_mat, check.names = FALSE, stringsAsFactors = FALSE)
+  }
+  
+  colnames(res)[1] <- as_label(row_v)
+  rownames(res) <- NULL
+  
+# 标题自动交互变量
+# 变量名
+row_name <- as_name(row_v)
+col_name <- as_name(col_v)
+
+# 变量标签（若无则回退为变量名）
+row_label <- attr(data[[row_name]], "label")
+col_label <- attr(data[[col_name]], "label")
+
+row_label <- ifelse(is.null(row_label) || row_label == "", row_name, row_label)
+col_label <- ifelse(is.null(col_label) || col_label == "", col_name, col_label)
+
+# 标题
+header_title <- paste0(
+  row_label, " × ", col_label, " 交互分析"
+)
+
+  res %>% gt() %>%
+    tab_header(
+      title = header_title,
+      subtitle = paste0("Chi=",chi_stats)
+    ) 
+}
+
+
+
+
+```
+
+```{r}
+# 列联表 行百分比表
+tabr(css21, v4, a1b1)
+# 或者显式指定
+tabr(css21, v4, a1b1, "row")
+tabr(css21, v4, a1b1, "col")
+```
+
+## 社会状况与态度相关变量结果
+
+### 家庭经济与困难情况  
+
+只有A卷的受访者回答了欠款情况，大概5035个受访者。
+```{r}
+# 欠款情况
+
+tab1(css21, c6a)
+tab1(css21, c6b)
+mrtab(css21,  c6c1:c6c6,select_value="是")
+mrtab(css21,  c6d1:c6d10,select_value="是")
+tab1(css21, c6e)
+
+# 过去12个月遇到的生活困难
+mrtab(css21,  d1a1:d1a14,select_value="是")
+
+# 过去一年遇到下列事情
+mrtab(css21,  d2a1:d2a7,select_value="是")
+
+# 是否找人帮忙
+tab1(css21, d2b1)
+tab1(css21, d2b2)
+tab1(css21, d2b3)
+tab1(css21, d2b4)
+tab1(css21, d2b5)
+tab1(css21, d2b6)
+
+#是否办成了
+tab1(css21, d2c1)
+tab1(css21, d2c2)
+tab1(css21, d2c3)
+tab1(css21, d2c4)
+tab1(css21, d2c5)
+tab1(css21, d2c6)
+
+# 家庭生活满意度  B卷
+tab_1(css21,  d3a1:d3a6)
+#社会关系自我评价 A卷
+tab_1(css21,  d3b1:d3b7)
+
+# 近半年是否遇到下列情况 A卷
+tab_1(css21,  d3c1:d3c4)
+
+# 社会经济地位
+tab1(css21, d4a)
+
+# 5年前社会经济地位
+tab1(css21, d4b)
+
+# 未来5年社会经济地位
+tab1(css21, d4c)
+
+# 5年变化
+tab1(css21, d4d)
+
+# 5年后变化
+tab1(css21, d4e)
+
+# 与周边人相比的生活水平
+tab_1(css21,  d4f1:d4f7)
+
+```
+
+### 其他生活状况
+```{r}
+# 上网及频次
+tab1(css21, d5a)
+tabr(css21,a1c1,d5a,"row")
+tabr(css21,v4,d5a,"row")
+tab_1(css21,  d5b1:d5b8)
+
+# 近2年加入网上社群情况
+tab_1(css21,  d5c1:d5c12)
+
+# 污染情况  A卷
+tab_1(css21,  d6a1:d6a4)
+tab1(css21, d6b)
+
+#人的价值体现在  B卷
+tab1(css21, d7a)
+
+#遇到困难时首先求助于谁 B卷
+tab1(css21, d7b)
+
+#疫情以来的变化  A卷
+tab_1(css21,  d8a_1:d8a_6)
+
+#近一年是否有下列行为 多选
+mrtab(css21,  d9a_1:d9a_8,select_value="是")
+
+# 消费观念
+tab_1(css21,  d9b_1:d9b_6)
+
+```
+
+### 社会保障
+```{r}
+# 养老保险
+tab1(css21, e1a)
+mrtab(css21,  e1b_1:e1b_4,select_value="是")
+#医疗保险
+tab1(css21, e2a)
+mrtab(css21,  e2b_1:e2b_5,select_value="是")
+#就医
+tab1(css21, e3b)
+#就医困难
+tab_1(css21,  e3c_1:e3c_5)
+# 社会保险
+tab_1(css21,  e4_1:e4_4)
+# 社会保障满意度
+tab_1(css21,  e5_1:e5_6)
+tab_1(css21,  e6a:e6b)
+
+```
+
+### 社会信任与社会公平
+```{r}
+# 机构信任
+tab_1(css21,  f1a_1:f1a_10)
+
+#一般信任
+tab1(css21, f1b)
+
+#社会不公平
+tab_1(css21,  f2a_1:f2a_8)
+
+#社会包容
+tab_1(css21,  f2b_1:f2b_6)
+tab1(css21, f2c)
+
+# 社会冲突
+tab_1(css21,  f2d_1:f2d_6)
+
+#社会公平
+tab_1(css21,  f3a_1:f3a_8)
+tab1(css21, f3b)
+
+```
+### 社会价值感与社会评价
+```{r}
+# 爱国
+tab_1(css21,  g1a_1:g1a_6)
+tab_1(css21,  g1b_1:g1b_6)
+# 道德水平与守法水平
+tab1(css21, g2a)
+tab1(css21, g2b)
+
+# 政府工作好坏
+tab_1(css21,  g3a_1:g3a_15)
+# 最大的三个社会问题
+mrtab(css21, g4_1:g4_15,select_value="是")
+
+# 多维度安全
+tab_1(css21,  g5a_1:g5a_9)
+
+#总体评价与国际地位
+tab_1(css21,  g6:g7a_6)
+
+```
+
+### 社会参与和政治参与
+```{r}
+#社会团体
+mrtab(css21,  h1a_1:h1a_9,select_value="是")
+#公共表达
+mrtab(css21,  h2a_1:h2a_12,select_value="是")
+
+
+#村居委会选举
+tab1(css21, h3a)
+tab1(css21, h3b)
+#您了解这次社区居委会/村委会选举的候选人的下列哪些情况?(可多选)
+mrtab(css21,  h3c_1:h3c_5,select_value="是")
+tab1(css21, h3d)
+tab1(css21, h4)
+
+#您了解这次区县人大代表选举的候选人的下列哪些情况?(可多选)
+tab1(css21, h5a)
+mrtab(css21,  h5b_1:h5b_5,select_value="是")
+tab1(css21, h5c)
+#您是否同意以下说法 基层自治
+tab_1(css21,h6a_1:h6a_9)
+
+```
+
+### 志愿服务
+```{r}
+
+#一般来说，我们所说的志愿服务是指自愿、无偿地为家庭成员之外的人或事物提供的劳动服务，不是捐钱、捐物、献血等捐赠行为。您本人在近一年以来参加过以下哪些 志愿服务?(可多选)
+mrtab(css21,  i1a_1:i1a_13,i1a_14,select_value="是")
+
+#您近一年以来参加的志愿服务主要是由谁组织的?(可多选)
+mrtab(css21,   i2a_1:i2a_7,select_value="是")
+
+tab1(css21, i3)
+tab1(css21, i4)
+tab1(css21, i5)
+tab1(css21, i6)
+
+#不足
+mrtab(css21,  i7a_1:i7a_8,select_value="是")
+# 近三个月志愿服务次数和时长
+tab1(css21, i8a)
+tab1(css21, i8b)
+
+#志愿服务需求
+mrtab(css21,  i9a_1:i9a_14,select_value="是")
+
+
+```
+
+
+
