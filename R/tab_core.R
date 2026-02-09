@@ -134,7 +134,7 @@ tab_core <- function(data,
   # -------------------------------------
   # compute table counts and percentages
   # -------------------------------------
-  tab <- mydat$mydat[, -1]
+  tab <- mydat$mydat[, -1, drop = FALSE]
   tab$total <- unname(rowSums(tab))
   tab <- rbind(tab, unname(colSums(tab)))
   tab.cell <- mydat$proptab.cell
