@@ -5,6 +5,7 @@
 \title{Summary of contingency tables as HTML table}
 \usage{
 tabn(
+  data,
   var.row,
   var.col,
   weight.by = NULL,
@@ -42,6 +43,8 @@ tabn(
 )
 }
 \arguments{
+\item{data}{Optional data frame for use with the pipe operator.}
+
 \item{var.row}{Variable that should be displayed in the table rows.}
 
 \item{var.col}{Cariable that should be displayed in the table columns.}

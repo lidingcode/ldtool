@@ -3,6 +3,7 @@
 #'
 #' @description Shows contingency tables as HTML file in browser or viewer pane, or saves them as file.
 #'
+#' @param data Optional data frame for use with the pipe operator.
 #' @param var.row Variable that should be displayed in the table rows.
 #' @param var.col Cariable that should be displayed in the table columns.
 #' @param var.labels Character vector with variable names, which will be used
@@ -102,7 +103,8 @@
 #' @importFrom stats ftable
 #' @importFrom sjstats crosstable_statistics table_values
 #' @export
-tabc <- function(var.row,
+tabc <- function(data,
+                     var.row,
                      var.col,
                      weight.by = NULL,
                      title = NULL,
@@ -136,7 +138,31 @@ tabc <- function(var.row,
                      use.viewer = TRUE,
                      remove.spaces = TRUE,
                      ...) {
+  if (missing(var.col) && !missing(var.row)) {
+    var.col <- var.row
+    var.row <- data
+    data <- NULL
+  }
+
+  if (is.data.frame(data)) {
+    var.name.row <- deparse(substitute(var.row))
+    var.name.col <- deparse(substitute(var.col))
+    var.row <- data[[var.name.row]]
+    var.col <- data[[var.name.col]]
+
+    if (!missing(weight.by)) {
+      weight.by.name <- deparse(substitute(weight.by))
+      if (weight.by.name %in% names(data)) {
+        weight.by <- data[[weight.by.name]]
+      }
+    }
+  } else {
+    var.name.row <- NULL
+    var.name.col <- NULL
+  }
+
   tab_core(
+    data = NULL,
     var.row = var.row,
     var.col = var.col,
     weight.by = weight.by,
@@ -170,6 +196,8 @@ tabc <- function(var.row,
     file = file,
     use.viewer = use.viewer,
     remove.spaces = remove.spaces,
+    var.name.row = var.name.row,
+    var.name.col = var.name.col,
     ...
   )
 }
