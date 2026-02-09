@@ -40,6 +40,7 @@ get_dplyr_dot_data <- function(x, qs) {
 
 # add annotations with table summary
 # here we print out total N of cases, chi-square and significance of the table
+#' @export
 print.table.summary <- function(baseplot,
                                 modsum,
                                 summary.pos = "r") {

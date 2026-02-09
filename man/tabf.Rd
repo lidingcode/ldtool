@@ -17,6 +17,8 @@ tabf(
   headings = st_options("headings"),
   display.labels = st_options("display.labels"),
   split.tables = Inf,
+  na.val = st_options("na.val"),
+  rev = "none",
   dnn = c(substitute(x), substitute(y)),
   chisq = FALSE,
   OR = FALSE,

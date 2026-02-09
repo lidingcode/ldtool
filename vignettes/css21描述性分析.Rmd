@@ -29,6 +29,8 @@ library(sjlabelled)
 library(magrittr)
 library(janitor)
 library(gt)
+library(ldtool)
+library(labelled)
 ```
 ### 查看读入的结果
 ```{r}
@@ -36,8 +38,8 @@ setwd("/Users/liding/DATA/CSS/CSS2006-2023/CSS2021")
 # 读入数据进行初步处理
 css21 <- read_dta("CSS2021.dta")
 
-# R初始的命令出来的结果并不好看
-des(css21)
+# 交互分析的时候可以查看变量名及特征
+# des(css21)
 ```
 
 ```{r}
@@ -54,7 +56,6 @@ css21 %>% count(v4)
 # Stata格式的数据存在一些标签问题
 #因为标签太长被删截出现了乱码
 # 查看哪些变量的标签有问题
-library(labelled)
 bad_labels <- sapply(var_label(css21), function(x) {
   tryCatch({
     nchar(x)
@@ -135,339 +136,35 @@ css21 <- css21 %>%
 css21%>% tabyl(v4)
 css21%>% count(v4)
 ```
-```{r,eval=FALSE,echo=FALSE}
-# 一种写法作为备选
-get_var_label <- function(df, var) {
-  lab <- attr(df[[var]], "label")
-  if (is.null(lab) || is.na(lab) || lab == "") {
-    return("")
-  }
-  as.character(lab)
-}
-
-tab1 <- function(df, var) {
-  var <- enquo(var)
-  var_name <- as_name(var)
-  var_label <- get_var_label(df, var_name)
-  header_title <- title %||%
-    paste0(var_name,
-           if (var_label != "") paste0("：", var_label) else "")
-
-  x <- df[[var_name]]
-  
-  # 去除缺失
-  x_nm <- x[!is.na(x)]
-  N <- length(x_nm)
-  if (N==0) {
-    print("变量不存在或没有有效观察值")
-    return("")
-    }
-
-  # 频数
-  tab <- as.data.frame(table(x_nm))
-  colnames(tab) <- c("value", "freq")
-
-  # 百分比
-  tab <- tab |>
-    mutate(
-      percent = freq / N * 100
-    )
-
-  # 累计百分比（按取值顺序）
-  tab <- tab |>
-    mutate(
-      cum_percent = cumsum(percent)
-    )
-
-  # 如果有取值标签，替换显示
-  if (!is.null(attr(x, "labels"))) {
-    labs <- attr(x, "labels")
-    tab$value <- ifelse(
-      tab$value %in% labs,
-      names(labs)[match(tab$value, labs)],
-      as.character(tab$value)
-    )
-  }
-
-  tab |>
-    mutate(
-      percent = round(percent, 1),
-      cum_percent = round(cum_percent, 1)
-    ) %>% 
-  gt() %>%
-#添加标题操作不成功
-    #   tab_header(
-#      title = header_title,
-#      subtitle = paste0("N = ", N)
-#    ) %>%
-    fmt_number(
-      columns = c(percent,cum_percent),
-      decimals = 1
-    ) %>%
-    cols_label(
-      value="Value",
-      freq = "Freq.",
-      percent = "Percent",
-      cum_percent = "Cum."
-    )
-}
-
-tab1(css21,v4) 
-```
 
 ### 定义一个单变量频数分析函数
 ```{r tab1}
 # tab1函数
-library(dplyr)
-library(gt)
-library(rlang)
-
-get_var_label <- function(data, var) {
-  lab <- attr(data[[var]], "label")
-  if (is.null(lab) || is.na(lab) || lab == "") {
-    return("")
-  }
-  as.character(lab)
-}
-
-tab1 <- function(data, var, title = NULL) {
-  var <- enquo(var)
-  var_name <- as_name(var)
-  var_label <- get_var_label(data, var_name)
-
-  df <- data %>%
-    dplyr::filter(!is.na(!!var)) %>%
-    count(!!var, name = "Frequency") %>%
-    mutate(
-      Percent = Frequency / sum(Frequency) * 100,
-      CumPercent = cumsum(Percent),
-    )
-  
-  N <- sum(df$Frequency)
-
-  header_title <- title %||%
-    paste0(var_name,
-           if (var_label != "") paste0("：", var_label) else "")
-  df %>%
-    gt() %>%
-    tab_header(
-      title = header_title,
-      subtitle = paste0("N = ", N)
-    ) %>%
-    fmt_number(
-      columns = c(Percent, CumPercent),
-      decimals = 1
-    ) %>%
-    cols_label(
-      !!colnames(df)[1] := "Value",
-      Frequency = "Freq.",
-      Percent = "Percent",
-      CumPercent = "Cum."
-    )
-}
-
 tab1(css21, v4)
 ```
 
-### 定义一个批量做单变量频次分析的函数
-```{r tab_1}
-# tab_1 函数
-library(dplyr)
-library(gt)
-library(rlang)
-library(htmltools)  # 用于组合多个 HTML 元素
-
-tab_1 <- function(data,..., title_prefix = NULL) {
-  # vars 可以是列名向量或者 tidyselect 语法
-  vars <- tidyselect::eval_select(expr(c(...)), data)
-  var_names <- names(vars)
-  
- # vars_selected <- tidyselect::eval_select(enquo(vars), data)
- #  var_names <- names(vars_selected)
-
-  # 循环生成每个 gt 表
-  gt_list <- lapply(var_names, function(v) {
-    title <- if (!is.null(title_prefix)) paste0(title_prefix, v) else NULL
-    tab1(data, !!sym(v), title = title)
-  })
-
-  # 直接组合成 HTML 可渲染对象
-  tagList(gt_list)
-}
-
-```
+### 批量做单变量频次分析的函数
 
 ```{r}
 tab_1(css21, h1a_1:h1a_8,h1a_9)
 tab_1(css21, h2a_1:h2a_12)
-
 ```
 
-### 定义一个多选题频次分析函数
-
-```{r mrtab}
-#mrtab 函数
-library(dplyr)
-library(gt)
-library(rlang)
-library(haven)
-library(htmltools)
-
-mrtab <- function(df, ..., select_value = 1, title_prefix = "多选题分析") {
-  # 使用 tidyselect 语法选择变量
-  vars <- tidyselect::eval_select(expr(c(...)), df)
-  var_names <- names(vars)
-  # 提取数据块
-  block <- df[var_names]
-  # 有效样本：至少一列非缺失
-  #valid <- apply(block, 1, function(x) any(!is.na(x)))
-  valid <- apply(block, 1, function(x) {
-  sum(x == select_value, na.rm = TRUE) > 0
-})
-  base_n <- sum(valid)
-  # 获取标签
-  labels <- sapply(block, var_label)
-  # 计算频数（修正：确保取向量，labelled 转数值）
-  freq <- sapply(var_names, function(v) {
-    vec <- df[[v]][valid]
-    if (inherits(vec, "labelled")) vec <- as_numeric(vec)
-    sum(vec == select_value, na.rm = TRUE)
-  })
-  
-  # 百分比（占有效样本）
-  pct_case <- freq / base_n * 100
-  
-  # 响应百分比（占总回应次数 = 所有选中次数之和）
-  total_responses <- sum(freq)
-  pct_resp <- freq / total_responses * 100
-  
-  # 构建表格数据框
-  df_tab <- tibble(
-    Value = labels,
-    Freq. = freq,
-    Pct_resp = round(pct_resp, 1),
-    Pct_case = round(pct_case, 1)
-  )
-  
-  # 标题自动显示变量名范围 + 可选前缀
-  header_title <- paste0(
-    if (!is.null(title_prefix)) paste0(title_prefix, " ") else "",
-    var_names[1], " - ", var_names[length(var_names)]
-  )
-  
-  # 输出 gt 表
-  df_tab %>%
-    gt() %>%
-    tab_header(
-      title = header_title,
-      subtitle = paste0("N = ", base_n,"  Rs = ", total_responses)
-    ) %>%
-    fmt_number(
-      columns = c("Pct_resp","Pct_case"),
-      decimals = 1
-    )
-}
-
-```
-
+### 多选题频次分析函数
 ```{r}
 
 mrtab(css21, h1a_1:h1a_8,h1a_9,
       select_value="是",title_prefix="加入了何种社群或组织")
 ```
 
-### 定义一个列联表函数
-```{r}
-# 定义一个交互分析函数
-library(dplyr)
-library(tidyr)
-library(janitor)
-library(htmlTable) # 用于在 Viewer 窗口渲染美化表格
-
-tabr <- function(data, row_var, col_var, type = "row") {
-  row_v <- enquo(row_var)
-  col_v <- enquo(col_var)
-  
-  # 1. 基础频数提取
-  t_raw <- data %>% tabyl(!!row_v, !!col_v,show_na = FALSE, show_missing_levels = FALSE)
-  row_labels <- as.character(t_raw[[1]])
-  mat <- as.matrix(t_raw[,-1])
-  # --- 核心：进行卡方检验 (Chi-square test) ---
-  chi_test <- chisq.test(mat)
-  chi_stats <- sprintf("Pearson chi2(%d) = %.4f   Pr = %.3f", 
-                       chi_test$parameter, chi_test$statistic, chi_test$p.value)
-  if (type == "row") {
-    # --- 行百分比逻辑 ---
-    row_ns <- rowSums(mat)
-    total_n <- sum(mat)
-    pct_mat <-mat / row_ns * 100
-    total_row_pct <-colSums(mat) / total_n * 100
-    full_pct_mat <- rbind(pct_mat, total_row_pct)
-    row_totals <- rowSums(full_pct_mat)
-    res_mat <- cbind(full_pct_mat,Total=row_totals)
-    res_mat <- round(res_mat,1)
-    res_mat <- format(res_mat, nsmall = 1)
-    res_mat <- cbind(res_mat, `N` = as.character(c(row_ns, total_n)))
-    
-    res <- data.frame(Label = c(row_labels, "Total"), res_mat, 
-                      check.names = FALSE, stringsAsFactors = FALSE)
-  } else {
-    # --- 列百分比逻辑 ---
-    col_ns <- colSums(mat)
-    total_n <- sum(mat)
-    pct_mat <- sweep(mat, 2, col_ns, "/") * 100
-    total_col_pct <- rowSums(mat) / total_n * 100
-    full_pct_mat <- cbind(pct_mat, Total = total_col_pct)
-    col_totals <- colSums(full_pct_mat)
-    
-    res_mat <- round(full_pct_mat,1)
-    res_mat <- format(res_mat, nsmall = 1)
-    final_mat <- rbind(res_mat, 
-                       Total_Pct = format(col_totals, nsmall = 1),
-                       `Sample Size (N)` = as.character(c(col_ns, total_n)))
-    
-    res <- data.frame(Label = c(row_labels, "Total_Pct", "N"), 
-                      final_mat, check.names = FALSE, stringsAsFactors = FALSE)
-  }
-  
-  colnames(res)[1] <- as_label(row_v)
-  rownames(res) <- NULL
-  
-# 标题自动交互变量
-# 变量名
-row_name <- as_name(row_v)
-col_name <- as_name(col_v)
-
-# 变量标签（若无则回退为变量名）
-row_label <- attr(data[[row_name]], "label")
-col_label <- attr(data[[col_name]], "label")
-
-row_label <- ifelse(is.null(row_label) || row_label == "", row_name, row_label)
-col_label <- ifelse(is.null(col_label) || col_label == "", col_name, col_label)
-
-# 标题
-header_title <- paste0(
-  row_label, " × ", col_label, " 交互分析"
-)
-
-  res %>% gt() %>%
-    tab_header(
-      title = header_title,
-      subtitle = paste0("Chi=",chi_stats)
-    ) 
-}
-
-
-
-
-```
+### 列联表分析
 
 ```{r}
 # 列联表 行百分比表
-tabr(css21, v4, a1b1)
+tabn(css21, v4, a1b1)
 # 或者显式指定
-tabr(css21, v4, a1b1, "row")
-tabr(css21, v4, a1b1, "col")
+tabn(css21, v4, a1b1, "row")
+tabn(css21, v4, a1b1, "col")
 ```
 
 ## 社会状况与态度相关变量结果
@@ -538,8 +235,8 @@ tab_1(css21,  d4f1:d4f7)
 ```{r}
 # 上网及频次
 tab1(css21, d5a)
-tabr(css21,a1c1,d5a,"row")
-tabr(css21,v4,d5a,"row")
+tabn(css21,a1c1,d5a,"row")
+tabn(css21,v4,d5a,"row")
 tab_1(css21,  d5b1:d5b8)
 
 # 近2年加入网上社群情况

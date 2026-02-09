@@ -1,0 +1,198 @@
+```yaml
+---
+title: "Stata-style Cross-tabulation in R"
+subtitle: "A simple interface for users familiar with tabulate"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Stata-style Cross-tabulation in R}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+```
+
+---
+
+## 1. Why this package?
+
+```{r}
+library(ldtool)
+library(dplyr)
+library(ggplot2)
+data(diamonds)
+```
+
+Users coming from **Stata** are used to commands such as:
+
+``` stata
+tab cut color
+tab cut color, row
+tab cut color, col
+tab cut color if clarity == "SI2"
+```
+
+In R, similar results are often obtained via functions with
+multiple logical arguments, for example:
+
+```{r}
+head(diamonds)
+D <- diamonds
+D |> tab(cut, color,
+      show.row.prc = TRUE,
+      show.col.prc = FALSE,
+      show.cell.prc = FALSE)
+```
+
+While powerful, such interfaces impose a **high cognitive cost**
+on users who think in terms of *commands*, not *options*.
+
+This package adopts a different design philosophy:
+
+> **Statistical meaning is encoded in function names, not arguments.**
+
+---
+
+## 2. Basic cross-tabulation
+
+Assume a data frame `D`:
+
+```{r}
+
+D %>% tabn(cut, color)
+tabn(D,cut,color)
+```
+
+This produces a two-way table of **cell frequencies**, equivalent to:
+
+``` stata
+tab cut color
+```
+
+---
+
+## 3. Cell, row, and column percentages
+
+Instead of remembering options, simply change the function name.
+
+### Cell percentages
+
+```{r}
+D %>% 
+  tabt(cut,color)
+```
+
+Equivalent Stata command:
+
+``` stata
+tab cut color, cell
+```
+
+---
+
+### Row percentages
+
+```{r}
+D %>% 
+  tabr(cut,color)
+```
+
+Equivalent Stata command:
+
+``` stata
+tab cut color, row
+```
+
+---
+
+### Column percentages
+
+```{r}
+D %>% 
+  tabc(cut,color)
+```
+
+Equivalent Stata command:
+
+``` stata
+tab cut color, col
+```
+
+---
+
+## 4. Grouped tabulation (the analogue of `by:`)
+
+In Stata, grouped tables are often written as:
+
+``` stata
+by clarity: tab cut color, row
+```
+
+In this package, grouping is handled using `dplyr::group_by()`:
+
+```{r}
+library(sjPlot)
+D %>% 
+  group_by(clarity) %>% 
+  tabn(cut,color)
+```
+
+This produces **one table per group**, each displaying row percentages.
+
+---
+
+## 5. Selecting variables before tabulation
+
+Just as in Stata one might write:
+
+``` stata
+keep cut color clarity
+by clarity: tab cut color
+```
+
+In R, this is naturally expressed via the pipe:
+
+```{r}
+D %>% 
+  dplyr::select(cut,color, clarity) %>% 
+  group_by(clarity) %>% 
+  tabr()
+```
+
+Note that once variables are selected, `tab*()` can be called
+**without explicitly naming them again**.
+
+---
+
+## 6. Design principles
+
+The `tab*()` family follows three principles:
+
+1. **One function, one statistical meaning**
+
+   * `tab()` → frequencies
+   * `tabt()` → cell percentages
+   * `tabr()` → row percentages
+   * `tabc()` → column percentages
+
+2. **Pipe-friendly by default**
+   All functions accept a data frame as their first argument.
+
+3. **Minimal abstraction**
+   Internally, all functions are thin wrappers around
+   `sjPlot::sjtab()`.
+
+Users who need fine-grained control are encouraged to call
+`sjPlot::sjtab()` directly.
+
+---
+
+## 7. Summary
+
+This package is designed for:
+
+* Teaching statistics to students familiar with Stata
+* Rapid exploratory cross-tabulation
+* Reducing the syntactic distance between Stata and R
+
+The goal is not to replace `sjPlot`, but to provide a **simpler,
+more semantic interface** for everyday use.
+
