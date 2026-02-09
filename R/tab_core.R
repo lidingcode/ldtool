@@ -1,4 +1,5 @@
-tab_core <- function(var.row,
+tab_core <- function(data,
+                     var.row,
                      var.col,
                      weight.by = NULL,
                      title = NULL,
@@ -31,7 +32,28 @@ tab_core <- function(var.row,
                      file = NULL,
                      use.viewer = TRUE,
                      remove.spaces = TRUE,
+                     var.name.row = NULL,
+                     var.name.col = NULL,
                      ...) {
+  if (missing(var.col) && !missing(var.row)) {
+    var.col <- var.row
+    var.row <- data
+    data <- NULL
+  }
+
+  if (is.data.frame(data)) {
+    var.name.row <- deparse(substitute(var.row))
+    var.name.col <- deparse(substitute(var.col))
+    var.row <- data[[var.name.row]]
+    var.col <- data[[var.name.col]]
+
+    if (!missing(weight.by)) {
+      weight.by.name <- deparse(substitute(weight.by))
+      if (weight.by.name %in% names(data)) {
+        weight.by <- data[[weight.by.name]]
+      }
+    }
+  }
   # -------------------------------------
   # check encoding
   # -------------------------------------
@@ -41,8 +63,12 @@ tab_core <- function(var.row,
   # --------------------------------------------------------
   # get variable name
   # --------------------------------------------------------
-  var.name.row <- get_var_name(deparse(substitute(var.row)))
-  var.name.col <- get_var_name(deparse(substitute(var.col)))
+  if (is.null(var.name.row)) {
+    var.name.row <- get_var_name(deparse(substitute(var.row)))
+  }
+  if (is.null(var.name.col)) {
+    var.name.col <- get_var_name(deparse(substitute(var.col)))
+  }
 
   # remove empty value-labels
   if (drop.empty) {
