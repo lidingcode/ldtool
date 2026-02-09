@@ -13,4 +13,5 @@ Imports:
     dplyr (>= 1.0),
     sjstats (>= 0.18.1),
     tidyr (>= 1.2.0),
-    sjlabelled(>= 1.2.0)
+    sjlabelled(>= 1.2.0),
+    sjPlot (>= 2.8.0)

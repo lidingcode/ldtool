@@ -104,65 +104,42 @@
 #' @importFrom sjstats crosstable_statistics table_values
 #' @export
 tabt <- function(data,
-                     var.row,
-                     var.col,
-                     weight.by = NULL,
-                     title = NULL,
-                     var.labels = NULL,
-                     value.labels = NULL,
-                     wrap.labels = 20,
-                     show.obs = FALSE,
-                     cell.p = TRUE,
-                     row.p = FALSE,
-                     col.p = FALSE,
-                     show.exp = FALSE,
-                     show.legend = FALSE,
-                     show.na = TRUE,
-                     show.summary = TRUE,
-                     drop.empty = TRUE,
-                     statistics = c("auto", "cramer", "phi", "spearman", "kendall", "pearson", "fisher"),
-                     string.total = "Total",
-                     digits = 1,
-                     tdcol.n = "black",
-                     tdcol.expected = "#339999",
-                     tdcol.cell = "#993333",
-                     tdcol.row = "#333399",
-                     tdcol.col = "#339933",
-                     emph.total = FALSE,
-                     emph.color = "#f8f8f8",
-                     prc.sign = "&nbsp;&#37;",
-                     hundret = "100.0",
-                     CSS = NULL,
-                     encoding = NULL,
-                     file = NULL,
-                     use.viewer = TRUE,
-                     remove.spaces = TRUE,
-                     ...) {
-  if (missing(var.col) && !missing(var.row)) {
-    var.col <- var.row
-    var.row <- data
-    data <- NULL
-  }
-
-  if (is.data.frame(data)) {
-    var.name.row <- deparse(substitute(var.row))
-    var.name.col <- deparse(substitute(var.col))
-    var.row <- data[[var.name.row]]
-    var.col <- data[[var.name.col]]
-
-    if (!missing(weight.by)) {
-      weight.by.name <- deparse(substitute(weight.by))
-      if (weight.by.name %in% names(data)) {
-        weight.by <- data[[weight.by.name]]
-      }
-    }
-  } else {
-    var.name.row <- NULL
-    var.name.col <- NULL
-  }
-
-  tab_core(
-    data = NULL,
+                  var.row,
+                  var.col,
+                  weight.by = NULL,
+                  title = NULL,
+                  var.labels = NULL,
+                  value.labels = NULL,
+                  wrap.labels = 20,
+                  show.obs = FALSE,
+                  cell.p = TRUE,
+                  row.p = FALSE,
+                  col.p = FALSE,
+                  show.exp = FALSE,
+                  show.legend = FALSE,
+                  show.na = TRUE,
+                  show.summary = TRUE,
+                  drop.empty = TRUE,
+                  statistics = c("auto", "cramer", "phi", "spearman", "kendall", "pearson", "fisher"),
+                  string.total = "Total",
+                  digits = 1,
+                  tdcol.n = "black",
+                  tdcol.expected = "#339999",
+                  tdcol.cell = "#993333",
+                  tdcol.row = "#333399",
+                  tdcol.col = "#339933",
+                  emph.total = FALSE,
+                  emph.color = "#f8f8f8",
+                  prc.sign = "&nbsp;&#37;",
+                  hundret = "100.0",
+                  CSS = NULL,
+                  encoding = NULL,
+                  file = NULL,
+                  use.viewer = TRUE,
+                  remove.spaces = TRUE,
+                  ...) {
+  tab_xtab_wrapper(
+    data = data,
     var.row = var.row,
     var.col = var.col,
     weight.by = weight.by,
@@ -196,8 +173,6 @@ tabt <- function(data,
     file = file,
     use.viewer = use.viewer,
     remove.spaces = remove.spaces,
-    var.name.row = var.name.row,
-    var.name.col = var.name.col,
     ...
   )
 }
